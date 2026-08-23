@@ -4,12 +4,12 @@ mod xdebug;
 use std::fs;
 use zed::CodeLabel;
 use zed_extension_api::{
-    self as zed, serde_json, DebugConfig, DebugScenario, LanguageServerId, Result,
-    StartDebuggingRequestArgumentsRequest,
+    self as zed, DebugConfig, DebugScenario, LanguageServerId, Result,
+    StartDebuggingRequestArgumentsRequest, serde_json,
 };
 
 use crate::{
-    language_servers::{Intelephense, PhpTools, Phpactor},
+    language_servers::{Intelephense, PhpTools, Phpactor, Phpantom},
     xdebug::XDebug,
 };
 
@@ -17,6 +17,7 @@ struct PhpExtension {
     phptools: Option<PhpTools>,
     intelephense: Option<Intelephense>,
     phpactor: Option<Phpactor>,
+    phpantom: Option<Phpantom>,
     xdebug: XDebug,
 }
 
@@ -26,6 +27,7 @@ impl zed::Extension for PhpExtension {
             phptools: None,
             intelephense: None,
             phpactor: None,
+            phpantom: None,
             xdebug: XDebug::new(),
         }
     }
@@ -85,6 +87,10 @@ impl zed::Extension for PhpExtension {
                     })
                 }
             }
+            Phpantom::LANGUAGE_SERVER_ID => {
+                let phpantom = self.phpantom.get_or_insert_with(Phpantom::new);
+                phpantom.language_server_command(language_server_id, worktree)
+            }
             language_server_id => Err(format!("unknown language server: {language_server_id}")),
         }
     }
@@ -94,15 +100,15 @@ impl zed::Extension for PhpExtension {
         language_server_id: &LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<Option<serde_json::Value>> {
-        if language_server_id.as_ref() == PhpTools::LANGUAGE_SERVER_ID {
-            if let Some(phptools) = self.phptools.as_mut() {
-                return phptools.language_server_workspace_configuration(worktree);
-            }
+        if language_server_id.as_ref() == PhpTools::LANGUAGE_SERVER_ID
+            && let Some(phptools) = self.phptools.as_mut()
+        {
+            return phptools.language_server_workspace_configuration(worktree);
         }
-        if language_server_id.as_ref() == Intelephense::LANGUAGE_SERVER_ID {
-            if let Some(intelephense) = self.intelephense.as_mut() {
-                return intelephense.language_server_workspace_configuration(worktree);
-            }
+        if language_server_id.as_ref() == Intelephense::LANGUAGE_SERVER_ID
+            && let Some(intelephense) = self.intelephense.as_mut()
+        {
+            return intelephense.language_server_workspace_configuration(worktree);
         }
 
         Ok(None)
@@ -137,7 +143,8 @@ impl zed::Extension for PhpExtension {
         if config.adapter != XDebug::NAME {
             return Err(format!(
                 "PHP extension does not support unknown adapter in `dap_config_to_scenario`: {} (supported: [{}])",
-                config.adapter, XDebug::NAME
+                config.adapter,
+                XDebug::NAME
             ));
         }
         self.xdebug.dap_config_to_scenario(config)
@@ -152,7 +159,8 @@ impl zed::Extension for PhpExtension {
         if config.adapter != XDebug::NAME {
             return Err(format!(
                 "PHP extension does not support unknown adapter in `get_dap_binary`: {} (supported: [{}])",
-                adapter_name, XDebug::NAME
+                adapter_name,
+                XDebug::NAME
             ));
         }
         self.xdebug
